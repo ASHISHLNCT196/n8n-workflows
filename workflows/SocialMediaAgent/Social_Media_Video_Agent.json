@@ -1,0 +1,2807 @@
+{
+  "name": "Social Media Video Agent (LinkedIn, Instagram, Facebook, YouTube Shorts)",
+  "nodes": [
+    {
+      "id": "8ad36364-077f-5446-af96-81d13320f872",
+      "name": "Note: Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1100,
+        -620
+      ],
+      "parameters": {
+        "width": 760,
+        "height": 560,
+        "color": 4,
+        "content": "## 🤖 Social Media Video Agent\n\nDrafts and publishes posts plus short vertical videos for you on **LinkedIn, Instagram Reels, Facebook Page and YouTube Shorts**. Nothing is published until you approve it in Telegram.\n\n**Two ways to give it work**\n1. **Queue:** add rows to the Google Sheet (`Topic`, `Platforms`, `Video`, `Notes`, `Status=Queued`). Every morning it takes the next queued row.\n2. **Chat:** message your Telegram bot, e.g. `Reel about the 3 mistakes I made hiring my first engineer`.\n   * Attach a video (≤ 20 MB) or paste a Google Drive link to use **your own footage**.\n   * Add a line `to: linkedin, youtube` to limit platforms.\n\n**Video logic:** your own video if you supply one; otherwise it writes a script and renders an **AI avatar video of you with HeyGen** (vertical, burned-in captions).\n\n**Flow:** request → Claude writes a script and platform-specific captions in your voice → get or render video → Telegram preview → ✅ Publish / ❌ Discard → upload to each platform → Telegram links.\n\nSee `README.md` next to this file for setup."
+      }
+    },
+    {
+      "id": "a3e5115f-5390-54a2-9474-1ace7893391a",
+      "name": "Note: Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -300,
+        -620
+      ],
+      "parameters": {
+        "width": 520,
+        "height": 560,
+        "color": 6,
+        "content": "## ⚙️ Setup checklist\n\n1. Fill in every `YOUR_…` value in **Agent Config**. Describe yourself in `brandVoice`.\n2. Credentials to create and select:\n   * **Telegram API**: bot token from @BotFather\n   * **Anthropic API**: AI writer\n   * **Google Sheets OAuth2** + **Google Drive OAuth2**\n   * **Header Auth \"HeyGen\"**: name `X-Api-Key`, value = HeyGen API key\n   * **Header Auth \"Meta Page Token\"**: name `Authorization`, value `OAuth <long-lived Page token>`\n   * **LinkedIn OAuth2**: scope `w_member_social`\n   * **YouTube OAuth2**\n3. Open **Workflow settings → Error workflow** and select *this* workflow, so the bottom-left Error Trigger alerts you.\n4. Activate. n8n must be reachable over public HTTPS for Telegram."
+      }
+    },
+    {
+      "id": "6a6cb36b-2104-5ef3-8324-b2a5b0665e5a",
+      "name": "Note: Publishing",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3020,
+        -700
+      ],
+      "parameters": {
+        "width": 500,
+        "height": 260,
+        "color": 5,
+        "content": "## 🚀 Publishers\nEach platform runs only if it is in the request's platform list. If a step fails, you get a Telegram message saying which step failed and why. The other platforms still publish.\n\n* **LinkedIn**: Videos API (chunked upload) → Posts API\n* **Instagram**: resumable Reel upload → publish\n* **Facebook**: Page video upload\n* **YouTube**: Shorts upload (`#Shorts` added)"
+      }
+    },
+    {
+      "id": "0b749c79-84a1-5727-8fce-503250ca706d",
+      "name": "Daily Queue Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1060,
+        120
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a5aa8d8b-7816-552f-8ae2-7fac07c25666",
+      "name": "Telegram Message",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1060,
+        320
+      ],
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "webhookId": "fec8da5d-3b0c-5af9-b001-82a93581dc34"
+    },
+    {
+      "id": "9dc10435-79c6-5c8c-b330-5e3d3f6591eb",
+      "name": "Agent Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -840,
+        220
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d1bb0f2c-8550-52b6-bfea-ff1dda96c7df",
+              "name": "ownerChatId",
+              "value": "YOUR_TELEGRAM_CHAT_ID",
+              "type": "string"
+            },
+            {
+              "id": "d5683450-1b41-5e28-9c41-60d1cf528ae1",
+              "name": "sheetId",
+              "value": "YOUR_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "45cca060-aca9-5a0c-8da8-197593178912",
+              "name": "sheetTab",
+              "value": "Queue",
+              "type": "string"
+            },
+            {
+              "id": "dbde770c-a303-5e05-bdc0-ba325f0db138",
+              "name": "brandVoice",
+              "value": "I am [NAME], a [ROLE] helping [AUDIENCE] with [TOPIC]. Tone: direct, practical, warm, no corporate jargon, no emojis overload. I share real lessons and numbers from my own work.",
+              "type": "string"
+            },
+            {
+              "id": "4250d07a-c86c-5deb-a4e1-cb99644b4a37",
+              "name": "defaultPlatforms",
+              "value": "linkedin,instagram,facebook,youtube",
+              "type": "string"
+            },
+            {
+              "id": "93e4195d-bbf6-57e9-9830-d9a8eb6f0767",
+              "name": "heygenAvatarId",
+              "value": "YOUR_HEYGEN_AVATAR_ID",
+              "type": "string"
+            },
+            {
+              "id": "6d292fe7-3f48-590a-b502-68e8062df78f",
+              "name": "heygenVoiceId",
+              "value": "YOUR_HEYGEN_VOICE_ID",
+              "type": "string"
+            },
+            {
+              "id": "6d0dd88a-69da-5900-9bdc-230ac7212863",
+              "name": "heygenWidth",
+              "value": "720",
+              "type": "string"
+            },
+            {
+              "id": "7ceeddbb-7841-5ac3-90f0-cd015ba445b0",
+              "name": "heygenHeight",
+              "value": "1280",
+              "type": "string"
+            },
+            {
+              "id": "fead6281-df78-548a-b5d1-813ba8d630c3",
+              "name": "linkedinAuthorUrn",
+              "value": "urn:li:person:YOUR_LINKEDIN_MEMBER_ID",
+              "type": "string"
+            },
+            {
+              "id": "1f3fc4dd-9647-5817-aa2e-d258d4ee8e29",
+              "name": "linkedinApiVersion",
+              "value": "202608",
+              "type": "string"
+            },
+            {
+              "id": "f0d46e23-57f7-5b9b-b8cd-dd9257845654",
+              "name": "metaApiVersion",
+              "value": "v23.0",
+              "type": "string"
+            },
+            {
+              "id": "e48c9838-0cf8-5dbc-99bb-6b9f835d8e30",
+              "name": "igUserId",
+              "value": "YOUR_INSTAGRAM_BUSINESS_ACCOUNT_ID",
+              "type": "string"
+            },
+            {
+              "id": "95386c70-899f-55b0-a101-fdb7bdbf3b47",
+              "name": "fbPageId",
+              "value": "YOUR_FACEBOOK_PAGE_ID",
+              "type": "string"
+            },
+            {
+              "id": "04cd0d72-cb7c-5bad-8a08-a763d5f89bfa",
+              "name": "youtubePrivacy",
+              "value": "public",
+              "type": "string"
+            },
+            {
+              "id": "49e63cb9-769e-5960-b56c-113caea38ff0",
+              "name": "youtubeCategoryId",
+              "value": "22",
+              "type": "string"
+            },
+            {
+              "id": "5f4a3902-986b-5f65-be0a-4b77bbfd062e",
+              "name": "youtubeRegionCode",
+              "value": "US",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "90a6ce30-d0d2-5d41-af2f-a4964f22d58b",
+      "name": "From Telegram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -620,
+        220
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8177d605-ddc1-4d35-ae99-ad4171c018fa",
+              "leftValue": "={{ $json.message !== undefined }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "563a38a0-6b52-5877-a0f9-c5cfde1a1a81",
+      "name": "Read Topic Queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -400,
+        60
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Agent Config').first().json.sheetId }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Agent Config').first().json.sheetTab }}"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "Queued"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d0b8c531-733d-5c65-9cd2-3bf26013df4d",
+      "name": "Pick Next Topic",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        -180,
+        60
+      ],
+      "parameters": {
+        "maxItems": 1
+      }
+    },
+    {
+      "id": "32a37c83-eb0d-57c3-9d6b-0b7ed51e0443",
+      "name": "Mark Row Drafting",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        40,
+        60
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Agent Config').first().json.sheetId }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Agent Config').first().json.sheetTab }}"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $json.row_number }}",
+            "Status": "Drafting"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Published At",
+              "displayName": "Published At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5646f761-a4ac-5912-9507-7893e9fa4e63",
+      "name": "Parse Sheet Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        60
+      ],
+      "parameters": {
+        "jsCode": "// Turns the queued sheet row into a standard content request.\nconst cfg = $('Agent Config').first().json;\nconst row = $('Pick Next Topic').first().json;\n\nconst ALIASES = { li: 'linkedin', linkedin: 'linkedin', ig: 'instagram', insta: 'instagram', instagram: 'instagram',\n  fb: 'facebook', facebook: 'facebook', yt: 'youtube', youtube: 'youtube', shorts: 'youtube' };\nconst parsePlatforms = (s) => [...new Set(String(s || '').toLowerCase().split(/[\\s,;|]+/).map(p => ALIASES[p]).filter(Boolean))];\n\nconst videoRef = String(row.Video || '').trim();\nconst m = videoRef.match(/(?:\\/d\\/|[?&]id=)([\\w-]{20,})/);\nconst driveFileId = m ? m[1] : (/^[\\w-]{20,}$/.test(videoRef) ? videoRef : '');\n\nlet platforms = parsePlatforms(row.Platforms);\nif (!platforms.length) platforms = parsePlatforms(cfg.defaultPlatforms);\n\nreturn [{ json: {\n  source: 'sheet',\n  topic: String(row.Topic || '').trim(),\n  notes: String(row.Notes || '').trim(),\n  platforms,\n  videoSource: driveFileId ? 'drive' : 'ai',\n  driveFileId,\n  telegramFileId: '',\n  rowNumber: row.row_number,\n} }];\n"
+      }
+    },
+    {
+      "id": "065a9c8a-6a9e-50a9-ab9c-89d5bea1e771",
+      "name": "Is It Me?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        380
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1b86b1e4-564e-40b5-b977-5eb1177346a8",
+              "leftValue": "={{ String($json.message.chat.id) === String($('Agent Config').first().json.ownerChatId) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "6b90b0e0-5346-5fc2-90a4-603cc973d5bc",
+      "name": "Ignore Other Users",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -180,
+        520
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "8fab6fda-648d-51d0-b64c-bd3da326bb03",
+      "name": "Parse Chat Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -180,
+        360
+      ],
+      "parameters": {
+        "jsCode": "// Understands messages like:\n//   \"Reel about my 3 biggest pricing mistakes\"\n//   (video attached, caption = topic)\n//   \"https://drive.google.com/file/d/<id>/view  launch recap\\nto: linkedin, youtube\"\nconst cfg = $('Agent Config').first().json;\nconst msg = $json.message || {};\nlet text = String(msg.text || msg.caption || '').trim();\n\nconst ALIASES = { li: 'linkedin', linkedin: 'linkedin', ig: 'instagram', insta: 'instagram', instagram: 'instagram',\n  fb: 'facebook', facebook: 'facebook', yt: 'youtube', youtube: 'youtube', shorts: 'youtube' };\nconst parsePlatforms = (s) => [...new Set(String(s || '').toLowerCase().split(/[\\s,;|]+/).map(p => ALIASES[p]).filter(Boolean))];\n\nlet platforms = [];\ntext = text.replace(/^\\s*(?:to|platforms?)\\s*:\\s*(.+)$/im, (_, list) => { platforms = parsePlatforms(list); return ''; });\nif (!platforms.length) platforms = parsePlatforms(cfg.defaultPlatforms);\n\nlet driveFileId = '';\ntext = text.replace(/https?:\\/\\/drive\\.google\\.com\\/\\S*?(?:\\/d\\/|[?&]id=)([\\w-]{20,})\\S*/i, (_, id) => { driveFileId = id; return ''; });\n\nconst doc = msg.document && /^video\\//.test(msg.document.mime_type || '') ? msg.document : null;\nconst tgVideo = msg.video || doc;\nconst topic = text.replace(/\\s+\\n/g, '\\n').trim();\n\nconst videoSource = tgVideo ? 'telegram' : driveFileId ? 'drive' : 'ai';\nconst tooBig = tgVideo && tgVideo.file_size > 20 * 1024 * 1024;\nconst valid = !tooBig && !(videoSource === 'ai' && topic.length < 5) && !/^\\/(start|help)\\b/.test(topic);\n\nreturn [{ json: {\n  valid,\n  invalidReason: tooBig ? 'too_big' : 'no_topic',\n  source: 'telegram',\n  topic,\n  notes: '',\n  platforms,\n  videoSource,\n  driveFileId,\n  telegramFileId: tgVideo ? tgVideo.file_id : '',\n  rowNumber: null,\n} }];\n"
+      }
+    },
+    {
+      "id": "00566de6-46d2-5ba8-9a20-330f94a78afc",
+      "name": "Valid Request?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        40,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "219d05e6-0be3-4ce8-949b-3d4c1e271f70",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "0bcb3128-5d01-5d66-a5ce-d9163e2d32d1",
+      "name": "Send Usage Help",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        520
+      ],
+      "parameters": {
+        "chatId": "={{ $('Agent Config').first().json.ownerChatId }}",
+        "text": "={{ $json.invalidReason === 'too_big'\n  ? '⚠️ Telegram bots can only download videos up to 20 MB. Upload it to Google Drive and send me the share link instead.'\n  : '👋 Tell me what to post, e.g.\\n\\n• Reel about the 3 mistakes I made hiring my first engineer\\n• (attach your own video + a caption describing it)\\n• a Google Drive video link + a short description\\n\\nOptional last line: to: linkedin, instagram, facebook, youtube' }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      }
+    },
+    {
+      "id": "3fb312de-2103-50bc-a07e-35c04a5acedb",
+      "name": "Acknowledge Request",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        220
+      ],
+      "parameters": {
+        "chatId": "={{ $('Agent Config').first().json.ownerChatId }}",
+        "text": "={{ '👍 On it. Drafting captions' + ($json.videoSource === 'ai' ? ' and rendering your AI video (≈5–10 min)' : ' for your video') + '. You will get a preview to approve before anything is posted.' }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      }
+    },
+    {
+      "id": "64fe64a4-07d2-5da3-b504-af752a401b1b",
+      "name": "Content Request",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        480,
+        220
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "54d95b7e-18ee-5ddb-a9cc-a6f0fd90571e",
+      "name": "AI Content Strategist",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        700,
+        220
+      ],
+      "parameters": {
+        "promptType": "define",
+        "hasOutputParser": true,
+        "text": "=Create a complete social media package for one short vertical video.\n\nABOUT ME AND MY VOICE:\n{{ $('Agent Config').first().json.brandVoice }}\n\nTOPIC / IDEA:\n{{ $json.topic || '(no description given; write general, honest captions that invite people to watch the video)' }}\n\nEXTRA NOTES:\n{{ $json.notes || 'none' }}\n\nVIDEO:\n{{ $json.videoSource === 'ai'\n  ? 'An AI avatar of me will speak your video_script word for word, so write it to be spoken aloud naturally.'\n  : 'I recorded this video myself. You cannot see it, so do NOT invent specific claims about what happens in it. Base the captions on the topic above. Still fill video_script with a 2-3 sentence summary.' }}\n\nPUBLISHING TO: {{ $json.platforms.join(', ') }}\n\nWrite every piece in first person, as me. Adapt the length and style to each platform. Never use the phrases \"In today's fast-paced world\", \"game-changer\", \"delve\" or \"unlock\".",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are an expert social media strategist and ghostwriter who writes high-performing short-form video scripts and captions that sound exactly like the creator, never like AI. You return only the structured output requested."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "6f01a9d3-d280-5773-9805-39d3ed235e2d",
+      "name": "Claude Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        640,
+        440
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "claude-sonnet-5-5"
+        },
+        "options": {
+          "maxTokensToSample": 4096,
+          "temperature": 0.7
+        }
+      }
+    },
+    {
+      "id": "09921f25-7bab-5b73-820d-88082f96c105",
+      "name": "Content Package Format",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        820,
+        440
+      ],
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"hook\": {\n      \"type\": \"string\",\n      \"description\": \"Scroll-stopping first line, max 12 words\"\n    },\n    \"video_script\": {\n      \"type\": \"string\",\n      \"description\": \"Spoken script for a 45-75s vertical video (110-180 words), first person, starts with the hook, ends with a clear call to action. Plain text only, no stage directions or emojis.\"\n    },\n    \"linkedin_post\": {\n      \"type\": \"string\",\n      \"description\": \"LinkedIn post, 120-220 words, short paragraphs, hook on line 1, ends with a question. No hashtags.\"\n    },\n    \"instagram_caption\": {\n      \"type\": \"string\",\n      \"description\": \"Instagram Reel caption, 60-150 words, hook first, line breaks, call to action. No hashtags.\"\n    },\n    \"facebook_post\": {\n      \"type\": \"string\",\n      \"description\": \"Facebook Page post, 40-120 words, conversational.\"\n    },\n    \"youtube_title\": {\n      \"type\": \"string\",\n      \"description\": \"YouTube Shorts title, max 80 characters, no hashtags\"\n    },\n    \"youtube_description\": {\n      \"type\": \"string\",\n      \"description\": \"YouTube description, 2-4 sentences.\"\n    },\n    \"hashtags\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"description\": \"3-6 relevant hashtags without the # sign\"\n    }\n  },\n  \"required\": [\n    \"hook\",\n    \"video_script\",\n    \"linkedin_post\",\n    \"instagram_caption\",\n    \"facebook_post\",\n    \"youtube_title\",\n    \"youtube_description\",\n    \"hashtags\"\n  ]\n}"
+      }
+    },
+    {
+      "id": "c57615f3-743f-5f41-9dd7-f134ecde50be",
+      "name": "Build Post Package",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        220
+      ],
+      "parameters": {
+        "jsCode": "// Combines the request with the AI output and formats every platform's text.\nconst req = $('Content Request').first().json;\nconst ai = $json.output;\n\nconst clean = (s) => String(s || '').trim();\nconst hashtags = (ai.hashtags || []).map(h => '#' + String(h).replace(/^#/, '').replace(/[^\\p{L}\\p{N}_]/gu, '')).filter(h => h.length > 1);\nconst tagLine = hashtags.join(' ');\n\n// LinkedIn \"little text\" format: reserved characters must be escaped or the post gets cut off.\nconst liEscape = (s) => s.replace(/[\\\\|{}@\\[\\]()<>#*_~]/g, ch => '\\\\' + ch);\n// YouTube rejects < and > in titles and descriptions.\nconst ytSafe = (s) => s.replace(/[<>]/g, '');\n\nlet ytTitle = ytSafe(clean(ai.youtube_title)).replace(/#shorts/ig, '').trim();\nytTitle = (ytTitle.length > 91 ? ytTitle.slice(0, 90).trim() + '…' : ytTitle) + ' #Shorts';\n\nconst pkg = {\n  ...req,\n  hook: clean(ai.hook),\n  videoScript: clean(ai.video_script),\n  hashtags,\n  linkedinCommentary: liEscape(`${clean(ai.linkedin_post)}\\n\\n${tagLine}`.trim()),\n  instagramCaption: `${clean(ai.instagram_caption)}\\n\\n${tagLine}`.trim().slice(0, 2200),\n  facebookText: `${clean(ai.facebook_post)}\\n\\n${tagLine}`.trim(),\n  youtubeTitle: ytTitle,\n  youtubeDescription: ytSafe(`${clean(ai.youtube_description)}\\n\\n${tagLine} #Shorts`).slice(0, 4900),\n  youtubeTags: hashtags.map(h => h.slice(1)).join(','),\n};\n\nconst cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);\nconst names = { linkedin: 'LinkedIn', instagram: 'Instagram', facebook: 'Facebook', youtube: 'YouTube Shorts' };\nconst sections = [];\nif (req.platforms.includes('linkedin')) sections.push(`— LinkedIn —\\n${cut(`${clean(ai.linkedin_post)}\\n\\n${tagLine}`, 900)}`);\nif (req.platforms.includes('instagram')) sections.push(`— Instagram —\\n${cut(pkg.instagramCaption, 700)}`);\nif (req.platforms.includes('facebook')) sections.push(`— Facebook —\\n${cut(pkg.facebookText, 500)}`);\nif (req.platforms.includes('youtube')) sections.push(`— YouTube —\\n${pkg.youtubeTitle}\\n${cut(pkg.youtubeDescription, 300)}`);\n\nconst videoLabel = { ai: 'AI avatar video (HeyGen)', telegram: 'your Telegram video', drive: 'your Google Drive video' }[req.videoSource];\npkg.previewText = cut([\n  `🎬 Draft ready for approval`,\n  `Topic: ${req.topic || '(from your video)'}`,\n  `Video: ${videoLabel}`,\n  `Posting to: ${req.platforms.map(p => names[p]).join(', ')}`,\n  '',\n  sections.join('\\n\\n'),\n].join('\\n'), 3900);\n\nreturn [{ json: pkg }];\n"
+      }
+    },
+    {
+      "id": "5e5b9476-9e0e-57bf-80a3-097ab66339f2",
+      "name": "Choose Video Source",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1280,
+        220
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "977358c2-b643-43b4-a92c-648922774384",
+                    "leftValue": "={{ $json.videoSource === 'telegram' }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Telegram upload"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "2013f824-3738-4cf5-91cb-9aa6a800d907",
+                    "leftValue": "={{ $json.videoSource === 'drive' }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Google Drive"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "74deb625-2004-4301-8f2d-d9bc71443649",
+                    "leftValue": "={{ $json.videoSource === 'ai' }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Generate with AI"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3c002b2c-29a6-59fb-b8b7-e981299fb156",
+      "name": "Download Telegram Video",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1520,
+        20
+      ],
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.telegramFileId }}",
+        "additionalFields": {}
+      }
+    },
+    {
+      "id": "c26efcdb-88ab-52cb-ab8a-4ca207bf7f85",
+      "name": "Download Drive Video",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1520,
+        200
+      ],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.driveFileId }}"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "02bbcb6f-8306-5f8f-8346-e9cb158058b6",
+      "name": "HeyGen: Generate Avatar Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1520,
+        400
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.heygen.com/v2/video/generate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  video_inputs: [{\n    character: { type: 'avatar', avatar_id: $('Agent Config').first().json.heygenAvatarId, avatar_style: 'normal' },\n    voice: { type: 'text', input_text: $json.videoScript, voice_id: $('Agent Config').first().json.heygenVoiceId }\n  }],\n  dimension: { width: Number($('Agent Config').first().json.heygenWidth), height: Number($('Agent Config').first().json.heygenHeight) },\n  caption: true,\n  title: $json.youtubeTitle\n}) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "870b38fb-c571-5410-8e96-7cd171590ce6",
+      "name": "Wait for Render",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1740,
+        400
+      ],
+      "parameters": {
+        "amount": 45,
+        "unit": "seconds"
+      },
+      "webhookId": "91cc0d85-bf55-5419-aff9-069d589ee91c"
+    },
+    {
+      "id": "2970b883-6719-5305-93ff-84e922dbbea5",
+      "name": "HeyGen: Check Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1960,
+        400
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.heygen.com/v1/video_status.get?video_id={{ $('HeyGen: Generate Avatar Video').first().json.data.video_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      }
+    },
+    {
+      "id": "0afaf27a-f175-5536-b304-709f1c73189e",
+      "name": "Render Finished?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2180,
+        400
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "9678ad61-067f-4d31-9124-13ebfe28953b",
+                    "leftValue": "={{ $json.data.status === 'completed' }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Completed"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "9644f93d-2022-456b-bc45-9b354280f630",
+                    "leftValue": "={{ $json.data.status === 'failed' || $runIndex >= 40 }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Failed or timed out"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "d9d2f294-a8ef-4cda-b9d1-6400fb56db40",
+                    "leftValue": "={{ true }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Still rendering"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "42221671-08cc-5943-ba28-0d1307241d17",
+      "name": "Download Rendered Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        320
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.data.video_url_caption || $json.data.video_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "0e292130-4c70-5853-aaaf-6a0bb213346f",
+      "name": "Report Render Failure",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2400,
+        520
+      ],
+      "parameters": {
+        "chatId": "={{ $('Agent Config').first().json.ownerChatId }}",
+        "text": "=❌ HeyGen could not render the video: {{ $json.error?.message || $json.data?.error?.message || $json.data?.error || ('status ' + ($json.data?.status || 'unknown') + ' after waiting ~30 min') }}\n\nTopic: {{ $('Build Post Package').first().json.topic }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      }
+    },
+    {
+      "id": "2699a87a-ce47-54f4-a391-077070cf884d",
+      "name": "Video Ready",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        140
+      ],
+      "parameters": {
+        "jsCode": "// All three video sources end here with the video in binary property \"data\".\nconst item = $input.first();\nif (!item.binary || !item.binary.data) throw new Error('No video file was received from the video source step.');\nconst buf = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst bin = item.binary.data;\nif (!String(bin.mimeType || '').startsWith('video/')) bin.mimeType = 'video/mp4';\nif (!bin.fileName || !/\\.\\w+$/.test(bin.fileName)) bin.fileName = 'social-video.mp4';\nreturn [{ json: { videoBytes: buf.length, fileName: bin.fileName }, binary: { data: bin } }];\n"
+      }
+    },
+    {
+      "id": "9d3f5d83-3ddf-5195-a5d2-5ed623ebfad2",
+      "name": "Send Preview Video",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2860,
+        140
+      ],
+      "parameters": {
+        "operation": "sendVideo",
+        "chatId": "={{ $('Agent Config').first().json.ownerChatId }}",
+        "binaryData": true,
+        "additionalFields": {
+          "caption": "=Preview: {{ $('Build Post Package').first().json.hook }}"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Telegram bots can upload up to 50 MB. Larger videos skip the preview but still go to approval."
+    },
+    {
+      "id": "ad940ea7-bc41-5441-8f3a-e83aea4a97a9",
+      "name": "Ask For Approval",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3080,
+        140
+      ],
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "={{ $('Agent Config').first().json.ownerChatId }}",
+        "message": "={{ $('Build Post Package').first().json.previewText }}",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "✅ Publish",
+            "disapproveLabel": "❌ Discard"
+          }
+        },
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "limitType": "afterTimeInterval",
+              "resumeAmount": 24,
+              "resumeUnit": "hours"
+            }
+          }
+        }
+      },
+      "webhookId": "1924783f-6664-5a40-9361-2eb2585978fc"
+    },
+    {
+      "id": "f55c13eb-a132-54a7-844d-12eac5e637c0",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        140
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "08223532-186a-4e1e-8ec8-39f74b21f9d0",
+              "leftValue": "={{ $json.data?.approved === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "519f0fdf-79d2-5feb-99d8-ae0b797aa072",
+      "name": "From Queue?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "efeb9381-5241-4ef9-9887-883258acde51",
+              "leftValue": "={{ $('Build Post Package').first().json.source === 'sheet' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "722e06f5-ff0c-510c-9371-d1adf486d713",
+      "name": "Update Queue Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3520,
+        360
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Agent Config').first().json.sheetId }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $('Agent Config').first().json.sheetTab }}"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Build Post Package').first().json.rowNumber }}",
+            "Status": "={{ $('Ask For Approval').first().json.data?.approved === true ? 'Published' : 'Rejected' }}",
+            "Published At": "={{ $now.toFormat('yyyy-LL-dd HH:mm') }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Published At",
+              "displayName": "Published At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f081afac-489b-5194-83fe-8ca3fac5d8f4",
+      "name": "Confirm Discarded",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3520,
+        220
+      ],
+      "parameters": {
+        "chatId": "={{ $('Agent Config').first().json.ownerChatId }}",
+        "text": "=🗑️ Discarded, nothing was posted. Send me a new message (or re-queue the sheet row) to try again.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      }
+    },
+    {
+      "id": "3144d1b4-3f9c-5180-9631-cee2b9f9e6a4",
+      "name": "Restore Video",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3520,
+        20
+      ],
+      "parameters": {
+        "jsCode": "// The approval step only returns the button click, so bring back the package and the video file.\nconst pkg = $('Build Post Package').first().json;\nconst video = $('Video Ready').first();\nreturn [{ json: { ...pkg, videoBytes: video.json.videoBytes, fileName: video.json.fileName }, binary: video.binary }];\n"
+      }
+    },
+    {
+      "id": "4076a8c8-79f0-5db8-b864-414df44e77a6",
+      "name": "Report Publish Failure",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        5900,
+        760
+      ],
+      "parameters": {
+        "chatId": "={{ $('Agent Config').first().json.ownerChatId }}",
+        "text": "=❌ Publishing failed at step \"{{ $prevNode.name }}\":\n{{ $json.error?.message || $json.error?.description || (typeof $json.error === 'string' ? $json.error : JSON.stringify($json).slice(0, 600)) }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      }
+    },
+    {
+      "id": "341387d4-ee46-5a57-a2b6-5cea35e75fd0",
+      "name": "Post to LinkedIn?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3760,
+        -380
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cb86e996-1716-499c-b777-d3778e5e7a77",
+              "leftValue": "={{ $json.platforms.includes('linkedin') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3d208750-2501-5c30-b3c2-85bd25ec346d",
+      "name": "LinkedIn: Initialize Upload",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3980,
+        -280
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/rest/videos?action=initializeUpload",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "linkedInOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "LinkedIn-Version",
+              "value": "={{ $('Agent Config').first().json.linkedinApiVersion }}"
+            },
+            {
+              "name": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ initializeUploadRequest: {\n  owner: $('Agent Config').first().json.linkedinAuthorUrn,\n  fileSizeBytes: $json.videoBytes,\n  uploadCaptions: false,\n  uploadThumbnail: false\n} }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "8b2fc61c-cc7d-5398-8416-6b622d56a26f",
+      "name": "LinkedIn: Attach Video",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        4200,
+        -380
+      ],
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      }
+    },
+    {
+      "id": "837e7b97-0d7e-5056-96ce-0b01930dd594",
+      "name": "LinkedIn: Split Into Parts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4420,
+        -380
+      ],
+      "parameters": {
+        "jsCode": "// LinkedIn wants the file in the byte ranges it returned (4 MB parts).\nconst item = $input.first();\nconst buf = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst { uploadInstructions, video, uploadToken } = item.json.value;\nconst out = [];\nfor (let i = 0; i < uploadInstructions.length; i++) {\n  const { uploadUrl, firstByte, lastByte } = uploadInstructions[i];\n  const chunk = await this.helpers.prepareBinaryData(Buffer.from(buf.subarray(firstByte, lastByte + 1)), `part-${i}.bin`, 'application/octet-stream');\n  out.push({ json: { partIndex: i, uploadUrl, video, uploadToken: uploadToken || '' }, binary: { chunk } });\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "449f2048-71d3-5791-9d43-88531ef71e9a",
+      "name": "LinkedIn: Upload Part",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4640,
+        -380
+      ],
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.uploadUrl }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "linkedInOAuth2Api",
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "chunk",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "78dfe55a-553b-5bce-9433-31af61d85ee8",
+      "name": "LinkedIn: Collect Part IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4860,
+        -380
+      ],
+      "parameters": {
+        "jsCode": "const parts = $input.all();\nconst first = $('LinkedIn: Split Into Parts').first().json;\nreturn [{ json: {\n  video: first.video,\n  uploadToken: first.uploadToken,\n  uploadedPartIds: parts.map(p => p.json.headers.etag),\n} }];\n"
+      }
+    },
+    {
+      "id": "341d0d32-0714-5045-8e9c-6b413d26f6ba",
+      "name": "LinkedIn: Finalize Upload",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5080,
+        -380
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/rest/videos?action=finalizeUpload",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "linkedInOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "LinkedIn-Version",
+              "value": "={{ $('Agent Config').first().json.linkedinApiVersion }}"
+            },
+            {
+              "name": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ finalizeUploadRequest: { video: $json.video, uploadToken: $json.uploadToken, uploadedPartIds: $json.uploadedPartIds } }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "a64dc7c5-f561-5679-9202-4b1adc8a111c",
+      "name": "LinkedIn: Wait for Processing",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        5300,
+        -380
+      ],
+      "parameters": {
+        "amount": 20,
+        "unit": "seconds"
+      },
+      "webhookId": "095f9895-0987-5da2-92bf-e8a12448800f"
+    },
+    {
+      "id": "284f678c-3f38-5724-96d9-e00d55776a28",
+      "name": "LinkedIn: Check Video Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5520,
+        -380
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.linkedin.com/rest/videos/{{ encodeURIComponent($('LinkedIn: Collect Part IDs').first().json.video) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "linkedInOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "LinkedIn-Version",
+              "value": "={{ $('Agent Config').first().json.linkedinApiVersion }}"
+            },
+            {
+              "name": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "a2150413-0541-565c-9738-94b4a5c14558",
+      "name": "LinkedIn: Video Ready?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        5740,
+        -380
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "3aa39262-65bd-4254-943a-63f8e541c862",
+                    "leftValue": "={{ $json.status === 'AVAILABLE' }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Available"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "005fbb2d-557e-404a-a9aa-956c4128543c",
+                    "leftValue": "={{ $json.status === 'PROCESSING_FAILED' || $runIndex >= 30 }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Failed or timed out"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "35071d3e-238e-469f-a9d8-76365ac06641",
+                    "leftValue": "={{ true }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Processing"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "26500ac5-7e1b-5ece-9ff0-162add3761e8",
+      "name": "LinkedIn: Publish Post",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5960,
+        -480
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.linkedin.com/rest/posts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "linkedInOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "LinkedIn-Version",
+              "value": "={{ $('Agent Config').first().json.linkedinApiVersion }}"
+            },
+            {
+              "name": "X-Restli-Protocol-Version",
+              "value": "2.0.0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  author: $('Agent Config').first().json.linkedinAuthorUrn,\n  commentary: $('Restore Video').first().json.linkedinCommentary,\n  visibility: 'PUBLIC',\n  distribution: { feedDistribution: 'MAIN_FEED', targetEntities: [], thirdPartyDistributionChannels: [] },\n  content: { media: { title: $('Restore Video').first().json.hook.slice(0, 200), id: $('LinkedIn: Collect Part IDs').first().json.video } },\n  lifecycleState: 'PUBLISHED',\n  isReshareDisabledByAuthor: false\n}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "496a8899-a882-581a-b428-5b8c42543429",
+      "name": "LinkedIn: Notify Posted",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        6180,
+        -480
+      ],
+      "parameters": {
+        "chatId": "={{ $('Agent Config').first().json.ownerChatId }}",
+        "text": "=✅ Posted on LinkedIn: https://www.linkedin.com/feed/update/{{ $json.headers['x-restli-id'] }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      }
+    },
+    {
+      "id": "a3153383-759b-586e-9e02-fe886d9497db",
+      "name": "Post to Instagram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3760,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d200c408-0b56-4602-a6ad-be9349b08fed",
+              "leftValue": "={{ $json.platforms.includes('instagram') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "dd6a1acf-ea1f-59c5-bd0c-292eaebbcd78",
+      "name": "Instagram: Create Reel Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3980,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Agent Config').first().json.metaApiVersion }}/{{ $('Agent Config').first().json.igUserId }}/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ media_type: 'REELS', upload_type: 'resumable', share_to_feed: true, caption: $('Restore Video').first().json.instagramCaption }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "78399777-4133-5d43-987a-85dd4e2eb6c9",
+      "name": "Instagram: Attach Video",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        4200,
+        0
+      ],
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      }
+    },
+    {
+      "id": "adade387-3aac-54ec-8e31-e81a665dec32",
+      "name": "Instagram: Upload Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4420,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://rupload.facebook.com/ig-api-upload/{{ $('Agent Config').first().json.metaApiVersion }}/{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "offset",
+              "value": "0"
+            },
+            {
+              "name": "file_size",
+              "value": "={{ $json.videoBytes }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "73afb079-75ac-5024-89e8-a1ab48b2943c",
+      "name": "Instagram: Wait for Processing",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4640,
+        0
+      ],
+      "parameters": {
+        "amount": 20,
+        "unit": "seconds"
+      },
+      "webhookId": "3805801b-a82c-5733-b1ac-0742519da8aa"
+    },
+    {
+      "id": "7eeba6e1-8247-5d14-99a3-ffba93974646",
+      "name": "Instagram: Check Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4860,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/{{ $('Agent Config').first().json.metaApiVersion }}/{{ $('Instagram: Create Reel Container').first().json.id }}?fields=status_code,status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "911360df-5141-5a0f-9e5c-31ec805d5848",
+      "name": "Instagram: Reel Ready?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        5080,
+        0
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "0ec5fbf9-b0d7-448e-91f8-62b8dfd3a62d",
+                    "leftValue": "={{ $json.status_code === 'FINISHED' }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Finished"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "d69708d9-8127-49e2-956f-3e56738c3921",
+                    "leftValue": "={{ ['ERROR', 'EXPIRED'].includes($json.status_code) || $runIndex >= 40 }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Failed or timed out"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "4a7c6d6d-dbb9-4c45-a23a-0b079eb2ac77",
+                    "leftValue": "={{ true }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "In progress"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fb791eca-bb64-5e5b-87f9-47b4809426c1",
+      "name": "Instagram: Publish Reel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5300,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/{{ $('Agent Config').first().json.metaApiVersion }}/{{ $('Agent Config').first().json.igUserId }}/media_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ creation_id: $('Instagram: Create Reel Container').first().json.id }) }}",
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "88cb0b05-fb62-5054-a275-4383c43d7ff5",
+      "name": "Instagram: Get Permalink",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5520,
+        -100
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/{{ $('Agent Config').first().json.metaApiVersion }}/{{ $json.id }}?fields=permalink",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "51815d0e-5f13-5e38-b3f7-450e2ebe2ccf",
+      "name": "Instagram: Notify Posted",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        5740,
+        -100
+      ],
+      "parameters": {
+        "chatId": "={{ $('Agent Config').first().json.ownerChatId }}",
+        "text": "=✅ Posted on Instagram: {{ $json.permalink || ('media id ' + $('Instagram: Publish Reel').first().json.id) }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      }
+    },
+    {
+      "id": "b40bda20-20e8-573a-a5bf-85d4cb6be573",
+      "name": "Post to Facebook?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3760,
+        340
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8c386b19-3b39-403d-834b-47c83f0a2584",
+              "leftValue": "={{ $json.platforms.includes('facebook') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d659f44e-a89c-5d24-b193-6a36a42050c3",
+      "name": "Facebook: Upload Page Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3980,
+        340
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph-video.facebook.com/{{ $('Agent Config').first().json.metaApiVersion }}/{{ $('Agent Config').first().json.fbPageId }}/videos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "source",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "description",
+              "value": "={{ $json.facebookText }}"
+            },
+            {
+              "name": "title",
+              "value": "={{ $json.hook.slice(0, 250) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "a15382d6-e6f5-544b-8642-9e9ed436e86f",
+      "name": "Facebook: Notify Posted",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4200,
+        340
+      ],
+      "parameters": {
+        "chatId": "={{ $('Agent Config').first().json.ownerChatId }}",
+        "text": "=✅ Posted on Facebook: https://www.facebook.com/{{ $json.id }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      }
+    },
+    {
+      "id": "28edf2a1-03d0-5ba4-8a0b-0f99db1cd0d7",
+      "name": "Post to YouTube?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3760,
+        600
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a6b384cc-cca7-49f3-a53c-7dcc7e80ab9e",
+              "leftValue": "={{ $json.platforms.includes('youtube') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e250f5f1-a0ab-58e2-b418-c1daf698033d",
+      "name": "YouTube: Upload Short",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1,
+      "position": [
+        3980,
+        600
+      ],
+      "parameters": {
+        "resource": "video",
+        "operation": "upload",
+        "title": "={{ $json.youtubeTitle }}",
+        "regionCode": "={{ $('Agent Config').first().json.youtubeRegionCode }}",
+        "categoryId": "={{ $('Agent Config').first().json.youtubeCategoryId }}",
+        "binaryProperty": "data",
+        "options": {
+          "description": "={{ $json.youtubeDescription }}",
+          "tags": "={{ $json.youtubeTags }}",
+          "privacyStatus": "={{ $('Agent Config').first().json.youtubePrivacy }}",
+          "selfDeclaredMadeForKids": false
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "d0278a77-db57-5cbe-a5ea-88dab1b14e34",
+      "name": "YouTube: Notify Posted",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4200,
+        600
+      ],
+      "parameters": {
+        "chatId": "={{ $('Agent Config').first().json.ownerChatId }}",
+        "text": "=✅ Posted on YouTube: https://youtube.com/shorts/{{ $json.id || $json.uploadId }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      }
+    },
+    {
+      "id": "ef5490e4-a8bd-5303-8440-849d6f6819c6",
+      "name": "On Workflow Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1060,
+        760
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "422959fb-a70a-5170-9978-73b5d9383e5b",
+      "name": "Alert Me On Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -840,
+        760
+      ],
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=⚠️ Social Media Agent stopped at \"{{ $json.execution.lastNodeExecuted }}\":\n{{ $json.execution.error.message }}\n\n{{ $json.execution.url }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "notes": "This runs in a separate error execution, so Agent Config is not available here. Put your chat ID in directly."
+    }
+  ],
+  "connections": {
+    "Daily Queue Check": {
+      "main": [
+        [
+          {
+            "node": "Agent Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Message": {
+      "main": [
+        [
+          {
+            "node": "Agent Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Config": {
+      "main": [
+        [
+          {
+            "node": "From Telegram?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "From Telegram?": {
+      "main": [
+        [
+          {
+            "node": "Is It Me?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read Topic Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Topic Queue": {
+      "main": [
+        [
+          {
+            "node": "Pick Next Topic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Next Topic": {
+      "main": [
+        [
+          {
+            "node": "Mark Row Drafting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Row Drafting": {
+      "main": [
+        [
+          {
+            "node": "Parse Sheet Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is It Me?": {
+      "main": [
+        [
+          {
+            "node": "Parse Chat Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignore Other Users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Chat Request": {
+      "main": [
+        [
+          {
+            "node": "Valid Request?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Request?": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Content Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Usage Help",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Sheet Request": {
+      "main": [
+        [
+          {
+            "node": "Content Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Content Request": {
+      "main": [
+        [
+          {
+            "node": "AI Content Strategist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Content Strategist",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Content Package Format": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Content Strategist",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Content Strategist": {
+      "main": [
+        [
+          {
+            "node": "Build Post Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Post Package": {
+      "main": [
+        [
+          {
+            "node": "Choose Video Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Choose Video Source": {
+      "main": [
+        [
+          {
+            "node": "Download Telegram Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download Drive Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HeyGen: Generate Avatar Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HeyGen: Generate Avatar Video": {
+      "main": [
+        [
+          {
+            "node": "Wait for Render",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Render Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Render": {
+      "main": [
+        [
+          {
+            "node": "HeyGen: Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HeyGen: Check Status": {
+      "main": [
+        [
+          {
+            "node": "Render Finished?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Finished?": {
+      "main": [
+        [
+          {
+            "node": "Download Rendered Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Render Failure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait for Render",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Telegram Video": {
+      "main": [
+        [
+          {
+            "node": "Video Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Drive Video": {
+      "main": [
+        [
+          {
+            "node": "Video Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Rendered Video": {
+      "main": [
+        [
+          {
+            "node": "Video Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Video Ready": {
+      "main": [
+        [
+          {
+            "node": "Send Preview Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Preview Video": {
+      "main": [
+        [
+          {
+            "node": "Ask For Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask For Approval": {
+      "main": [
+        [
+          {
+            "node": "Approved?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "From Queue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "From Queue?": {
+      "main": [
+        [
+          {
+            "node": "Update Queue Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [
+          {
+            "node": "Restore Video",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confirm Discarded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Video": {
+      "main": [
+        [
+          {
+            "node": "Post to LinkedIn?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Post to Instagram?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Post to Facebook?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Post to YouTube?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to LinkedIn?": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn: Attach Video",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "LinkedIn: Initialize Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn: Initialize Upload": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn: Attach Video",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn: Attach Video": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn: Split Into Parts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn: Split Into Parts": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn: Upload Part",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn: Upload Part": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn: Collect Part IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn: Collect Part IDs": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn: Finalize Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn: Finalize Upload": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn: Wait for Processing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn: Wait for Processing": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn: Check Video Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn: Check Video Status": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn: Video Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn: Video Ready?": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn: Publish Post",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "LinkedIn: Wait for Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn: Publish Post": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn: Notify Posted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Instagram?": {
+      "main": [
+        [
+          {
+            "node": "Instagram: Attach Video",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Instagram: Create Reel Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram: Create Reel Container": {
+      "main": [
+        [
+          {
+            "node": "Instagram: Attach Video",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram: Attach Video": {
+      "main": [
+        [
+          {
+            "node": "Instagram: Upload Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram: Upload Video": {
+      "main": [
+        [
+          {
+            "node": "Instagram: Wait for Processing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram: Wait for Processing": {
+      "main": [
+        [
+          {
+            "node": "Instagram: Check Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram: Check Status": {
+      "main": [
+        [
+          {
+            "node": "Instagram: Reel Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram: Reel Ready?": {
+      "main": [
+        [
+          {
+            "node": "Instagram: Publish Reel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Instagram: Wait for Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram: Publish Reel": {
+      "main": [
+        [
+          {
+            "node": "Instagram: Get Permalink",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram: Get Permalink": {
+      "main": [
+        [
+          {
+            "node": "Instagram: Notify Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Facebook?": {
+      "main": [
+        [
+          {
+            "node": "Facebook: Upload Page Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Facebook: Upload Page Video": {
+      "main": [
+        [
+          {
+            "node": "Facebook: Notify Posted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to YouTube?": {
+      "main": [
+        [
+          {
+            "node": "YouTube: Upload Short",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "YouTube: Upload Short": {
+      "main": [
+        [
+          {
+            "node": "YouTube: Notify Posted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On Workflow Error": {
+      "main": [
+        [
+          {
+            "node": "Alert Me On Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "social-media"
+    },
+    {
+      "name": "ai-agent"
+    },
+    {
+      "name": "video"
+    }
+  ],
+  "pinData": {},
+  "active": false
+}
